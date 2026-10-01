@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Authorize Cinema Scout</title>
+    <style>
+      :root { color: #1d1f20; background: #f7f6f2; font-family: system-ui, sans-serif; }
+      body { min-height: 100vh; margin: 0; display: grid; place-items: center; }
+      main { width: min(440px, calc(100% - 40px)); padding: 34px; background: #fff; border: 1px solid #deddd8; border-radius: 16px; box-shadow: 0 12px 40px #0000000d; }
+      h1 { margin: 0 0 10px; font: 700 30px Georgia, serif; }
+      p { color: #50545a; line-height: 1.5; }
+      label { display: block; margin: 20px 0 7px; font-weight: 650; }
+      input, button { box-sizing: border-box; width: 100%; padding: 12px; border-radius: 9px; font: inherit; }
+      input { border: 1px solid #c9c9c4; }
+      button { margin-top: 14px; border: 0; background: #29313a; color: #fff; font-weight: 700; cursor: pointer; }
+      button.secondary { background: #ecebe7; color: #29313a; }
+      #status { min-height: 24px; margin-top: 16px; }
+      .hidden { display: none; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Authorize Cinema Scout</h1>
+      <p>Sign in to approve access to your private watch history, watchlist, reflections, and film preferences.</p>
+      <form id="login">
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" required placeholder="you@example.com">
+        <button>Send secure sign-in link</button>
+      </form>
+      <section id="approval" class="hidden">
+        <p id="details"></p>
+        <button id="approve">Approve Cinema Scout</button>
+        <button id="deny" class="secondary">Deny</button>
+      </section>
+      <p id="status"></p>
+    </main>
+    <script type="module">
+      import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+      const authorizationId = new URL(location.href).searchParams.get("authorization_id") ?? "";
+      const supabase = createClient(
+        "https://crhmtougnlvmetvxdyso.supabase.co",
+        "sb_publishable__PJMWxjCQZSg1X0TW4oKcg_2kUf3BuH",
+      );
+      const login = document.querySelector("#login");
+      const approval = document.querySelector("#approval");
+      const details = document.querySelector("#details");
+      const status = document.querySelector("#status");
+      const say = (message) => { status.textContent = message; };
+
+      async function load() {
+        if (!authorizationId) return say("This authorization request is missing its ID.");
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+        login.classList.add("hidden");
+        const { data, error } = await supabase.auth.oauth.getAuthorizationDetails(authorizationId);
+        if (error) return say(error.message);
+        if (!("authorization_id" in data)) return location.assign(data.redirect_url);
+        details.textContent = `${data.client?.name ?? "An MCP client"} is requesting access with: ${data.scope ?? "basic account access"}.`;
+        approval.classList.remove("hidden");
+      }
+
+      login.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const email = document.querySelector("#email").value;
+        say("Sending sign-in link…");
+        const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: location.href } });
+        say(error ? error.message : "Check your email, then return through the sign-in link.");
+      });
+      document.querySelector("#approve").addEventListener("click", async () => {
+        const { data, error } = await supabase.auth.oauth.approveAuthorization(authorizationId);
+        if (error) return say(error.message);
+        location.assign(data.redirect_url);
+      });
+      document.querySelector("#deny").addEventListener("click", async () => {
+        const { data, error } = await supabase.auth.oauth.denyAuthorization(authorizationId);
+        if (error) return say(error.message);
+        location.assign(data.redirect_url);
+      });
+      load();
+    </script>
+  </body>
+</html>
